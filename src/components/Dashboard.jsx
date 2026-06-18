@@ -5,6 +5,7 @@ import ConsolidatedTab from './ConsolidatedTab.jsx'
 import MonthlyTab from './MonthlyTab.jsx'
 import AssetTab from './AssetTab.jsx'
 import TransactionsTab from './TransactionsTab.jsx'
+import AnalysisTab from './AnalysisTab.jsx'
 import { Loader, ErrorState, EmptyState } from './StateViews.jsx'
 import { driveConfigured } from '../config.js'
 import { fetchDriveWorkbooks } from '../lib/drive.js'
@@ -18,6 +19,7 @@ const TABS = [
   { key: 'mf', label: 'Mutual Funds' },
   { key: 'etf', label: 'ETFs' },
   { key: 'transactions', label: 'Transactions' },
+  { key: 'analysis', label: 'Portfolio Analysis' },
 ]
 
 export default function Dashboard() {
@@ -34,8 +36,9 @@ export default function Dashboard() {
     setStatus('loading')
     setError(null)
     try {
-      const { parsed } = await fetchDriveWorkbooks()
+      const { parsed, analysisHtml } = await fetchDriveWorkbooks()
       const data = buildDataset(parsed)
+      data.analysisHtml = analysisHtml
       if (data.holdings.length === 0 && data.transactions.length === 0) {
         throw new Error('Files were fetched but no INDmoney reports were recognized in them.')
       }
@@ -120,6 +123,7 @@ export default function Dashboard() {
             {tab === 'transactions' && (
               <TransactionsTab holdings={dataset.holdings} transactions={dataset.transactions} />
             )}
+            {tab === 'analysis' && <AnalysisTab html={dataset.analysisHtml} />}
           </main>
         </>
       )}
