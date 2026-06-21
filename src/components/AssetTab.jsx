@@ -50,6 +50,7 @@ export default function AssetTab({ type, label, holdings }) {
   const columns = isMF
     ? [
         { key: 'name', label: 'Fund', render: (r) => <span className="cell-name">{r.name}</span> },
+        { key: 'qty', label: 'Units', align: 'right', render: (r) => formatNumber(r.qty) },
         { key: 'invested', label: 'Invested', align: 'right', render: (r) => formatINR(r.invested) },
         ...pnlCols,
       ]
@@ -82,6 +83,7 @@ export default function AssetTab({ type, label, holdings }) {
       </td>
       {isMF ? (
         <>
+          <td className="ta-r" />
           <td className="ta-r">{formatINR(invested)}</td>
           {totalPnlCells}
         </>
