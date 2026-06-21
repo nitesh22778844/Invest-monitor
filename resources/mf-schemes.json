@@ -1,0 +1,152 @@
+{
+  "axis large cap": {
+    "schemeCode": 112277,
+    "schemeName": "Axis Large Cap Fund - Regular Plan - Growth",
+    "plan": "Regular"
+  },
+  "axis large mid cap": {
+    "schemeCode": 145112,
+    "schemeName": "Axis Large & Mid Cap Fund - Regular Plan - Growth",
+    "plan": "Regular"
+  },
+  "axis midcap": {
+    "schemeCode": 120505,
+    "schemeName": "Axis Midcap Fund - Direct Plan - Growth",
+    "plan": "Direct"
+  },
+  "axis small cap": {
+    "schemeCode": 125354,
+    "schemeName": "Axis Small Cap Fund - Direct Plan - Growth",
+    "plan": "Direct"
+  },
+  "dsp mid cap": {
+    "schemeCode": 119071,
+    "schemeName": "DSP Midcap Fund - Direct Plan - Growth",
+    "plan": "Direct"
+  },
+  "edelweiss mid cap": {
+    "schemeCode": 140228,
+    "schemeName": "Edelweiss Mid Cap Fund - Direct Plan - Growth Option",
+    "plan": "Direct"
+  },
+  "icici pru multi asset": {
+    "schemeCode": 101144,
+    "schemeName": "ICICI Prudential Multi-Asset Fund - Growth",
+    "plan": "Regular"
+  },
+  "icici prudential banking and financial services": {
+    "schemeCode": 120244,
+    "schemeName": "ICICI Prudential Banking and Financial Services Fund - Direct Plan -  Growth",
+    "plan": "Direct"
+  },
+  "icici prudential corporate bond": {
+    "schemeCode": 120692,
+    "schemeName": "ICICI Prudential Corporate Bond Fund - Direct Plan - Growth",
+    "plan": "Direct"
+  },
+  "icici prudential elss tax saver": {
+    "schemeCode": 120592,
+    "schemeName": "ICICI Prudential ELSS Tax Saver Fund - Direct Plan - Growth",
+    "plan": "Direct"
+  },
+  "icici prudential flexicap": {
+    "schemeCode": 148990,
+    "schemeName": "ICICI Prudential Flexicap Fund - Direct Plan - Growth",
+    "plan": "Direct"
+  },
+  "icici prudential large cap": {
+    "schemeCode": 120586,
+    "schemeName": "ICICI Prudential Large Cap Fund (erstwhile Bluechip Fund) - Direct Plan - Growth",
+    "plan": "Direct"
+  },
+  "icici prudential medium term bond": {
+    "schemeCode": 120670,
+    "schemeName": "ICICI Prudential Medium Term Bond Fund - Direct Plan - Growth",
+    "plan": "Direct"
+  },
+  "icici prudential value": {
+    "schemeCode": 120323,
+    "schemeName": "ICICI Prudential Value Fund (erstwhile Value Discovery Fund) - Direct Plan - Growth",
+    "plan": "Direct"
+  },
+  "invesco india mid cap": {
+    "schemeCode": 120403,
+    "schemeName": "Invesco India Midcap Fund - Direct Plan - Growth Option",
+    "plan": "Direct"
+  },
+  "kotak flexicap": {
+    "schemeCode": 120166,
+    "schemeName": "Kotak Flexicap Fund - Growth - Direct",
+    "plan": "Direct"
+  },
+  "kotak midcap": {
+    "schemeCode": 119775,
+    "schemeName": "Kotak Midcap Fund - Direct Plan - Growth",
+    "plan": "Direct"
+  },
+  "kotak small cap": {
+    "schemeCode": 120164,
+    "schemeName": "Kotak-Small Cap Fund - Growth - Direct",
+    "plan": "Direct"
+  },
+  "motilal oswal midcap": {
+    "schemeCode": 127042,
+    "schemeName": "Motilal Oswal Midcap Fund-Direct Plan-Growth Option",
+    "plan": "Direct"
+  },
+  "motilal oswal nifty midcap 150 index": {
+    "schemeCode": 147622,
+    "schemeName": "Motilal Oswal Nifty Midcap 150 Index Fund - Direct Plan",
+    "plan": "Direct"
+  },
+  "motilal oswal nifty smallcap 250 index": {
+    "schemeCode": 147624,
+    "schemeName": "Motilal Oswal Nifty Smallcap 250 Index - Regular Plan",
+    "plan": "Regular"
+  },
+  "nippon india innovation": {
+    "schemeCode": 152034,
+    "schemeName": "Nippon India Innovation Fund-Regular Plan-Growth Option",
+    "plan": "Regular"
+  },
+  "nippon india mid cap": {
+    "schemeCode": 118668,
+    "schemeName": "Nippon India Growth Mid Cap Fund - Direct Plan Growth Plan - Growth Option",
+    "plan": "Direct"
+  },
+  "nippon india small cap": {
+    "schemeCode": 118778,
+    "schemeName": "Nippon India Small Cap Fund - Direct Plan Growth Plan - Growth Option",
+    "plan": "Direct"
+  },
+  "quant multi cap": {
+    "schemeCode": 120823,
+    "schemeName": "quant Multi Cap Fund-GROWTH OPTION-Direct Plan",
+    "plan": "Direct"
+  },
+  "quant small cap": {
+    "schemeCode": 120828,
+    "schemeName": "quant Small Cap Fund - Growth Option - Direct Plan",
+    "plan": "Direct"
+  },
+  "sbi contra": {
+    "schemeCode": 119835,
+    "schemeName": "SBI CONTRA FUND - DIRECT PLAN - GROWTH",
+    "plan": "Direct"
+  },
+  "sbi equity hybrid": {
+    "schemeCode": 119609,
+    "schemeName": "SBI EQUITY HYBRID FUND - DIRECT PLAN - Growth",
+    "plan": "Direct"
+  },
+  "sbi mid cap": {
+    "schemeCode": 102941,
+    "schemeName": "SBI MIDCAP FUND - REGULAR PLAN - GROWTH",
+    "plan": "Regular"
+  },
+  "sbi midcap": {
+    "schemeCode": 119716,
+    "schemeName": "SBI MIDCAP FUND - DIRECT PLAN - GROWTH",
+    "plan": "Direct"
+  }
+}

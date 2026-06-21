@@ -42,7 +42,7 @@ async function downloadFile(file) {
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Download failed for ${file.name} (${res.status})`)
   const buf = await res.arrayBuffer()
-  return parseWorkbook(buf, file.name)
+  return parseWorkbook(buf, file.name, file.modifiedTime)
 }
 
 // Download a public file's raw text (used for the .html analysis report).

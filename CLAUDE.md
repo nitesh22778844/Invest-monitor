@@ -39,9 +39,11 @@ fallbacks.)
    `parseMyStocks` splits `Name\nSYMBOL` and the `₹invested / "N Qty" / "₹avg Avg."`
    cell; P&L = current − invested (the sheet's Total PnL cell is often `#ERROR!`).
    → holdings with real **current value + P&L**.
-2. **My MFs** — current MF portfolio. Concatenated rows under a `Gain/ Loss`
-   marker: `<Fund>Invested₹<v>Current Value₹<v>Gain/ Loss₹<v>▲/▼<pct>%`. Values
-   are **compact** (`₹4.14L`, `₹-3.04K`). `parseMyMfs`. No units/folio available.
+2. **My MFs** — current MF portfolio. A real table, header
+   `Fund Name | Invested | Current Value | Units`. Values are **compact**
+   (`₹4.14L`, `₹-3.04K`) so they go through `parseMoney`. `parseMyMfs` reads
+   `Units` → `qty` (no folio). Detected **last** among the MF tables (its loose
+   header tokens are substrings of the Coin/Groww headers — see `buildDataset`).
 3. **Stocks Transactions** — stock/ETF orders. Grouped under ordinal date headers
    (`8th Jun'26`, `30th Sept'25`); rows have `N Qty` (col 1) and `Buy/Sell Executed`
    (col 4). `parseStockTransactions` → equity `transactions` (carry `type`).
@@ -82,7 +84,8 @@ coding" in `App.css`.
 ## Live prices (Stocks/ETFs)
 The sheet is the source of truth only for **qty / avgPrice / invested**; the
 **Current value, market price, and P&L** for stocks/ETFs are recomputed from a
-**live** price (`current = qty × livePrice`). MFs keep the sheet's value.
+**live** price (`current = qty × livePrice`). MFs get live **NAV** too — see
+**Live NAV (MFs)** below.
 
 - Source: Yahoo Finance batch `spark` endpoint, `<SYMBOL>.NS` (NSE, INR). Yahoo
   has no CORS, so requests route through the `VITE_PRICE_PROXY` Worker.
@@ -101,6 +104,40 @@ The sheet is the source of truth only for **qty / avgPrice / invested**; the
 - Worker: `proxy/` (`src/worker.js` + `wrangler.jsonc`), locked to Yahoo hosts,
   60s edge cache. Deploy/redeploy with `cd proxy && npx wrangler deploy`.
 
+## Live NAV (MFs)
+MF **Current value + P&L** are recomputed from a **live NAV** (`current = units ×
+NAV`); only `invested` (and `units`/`avgPrice` when the sheet has them) come from
+the sheet.
+
+- Source: **mfapi.in** (`https://api.mfapi.in/mf/<code>`), a free, no-key JSON
+  mirror of AMFI's daily NAV. It sends `access-control-allow-origin: *`, so the
+  browser calls it **directly — no proxy** (unlike Yahoo). AMFI's own `NAVAll.txt`
+  has no CORS, hence mfapi.in.
+- No ISIN/scheme code in our sheets, so each fund is matched to an AMFI **scheme
+  code OFFLINE, once**, by `scripts/build-mf-schemes.mjs` → committed
+  **`resources/mf-schemes.json`** (`mfKey(name) → {schemeCode, schemeName, plan}`).
+  At runtime the app only **reads** that map (never searches). Re-run the
+  generator when a new fund appears (the app `console.warn`s any unmatched MF).
+  The generator harvests fund names from Drive, scores mfapi search hits (Growth +
+  plan-by-source: Axis=Regular, others=Direct; active vs index never crossed), and
+  has an `OVERRIDES` map for legacy ICICI schemes mfapi search can't reach.
+- `src/lib/navs.js` — `mfKey` (name→stable key, more discriminating than reconcile's
+  `nameKey` since MF names share AMC prefixes), `schemeCodesFor(holdings)`,
+  `fetchNavs(codes)` (per-code NAV history, **~12h localStorage TTL**, `force` for
+  manual refresh, never throws), `navOn(history, date)`, and
+  `enrichMfHoldings(holdings, navMap)` (pure; recomputes current/pnl, leaves
+  invested untouched). Units priority: **sheet `qty` → Coin avg-NAV
+  (`invested/avgPrice`) → snapshot-scale** (`current / NAV@asOf`, where `asOf` is
+  the Drive file's `modifiedTime` threaded through `parse.js`→`classify.js`;
+  reproduces the sheet value while fresh, diverges as NAV moves past the sheet
+  date). **All 4 MF sheets now carry a `Units` column**, so sheet `qty` is the
+  primary path for every fund; the avg-NAV / snapshot-scale steps are now just
+  fallbacks for any future sheet without units. Unmatched funds / funds without
+  derivable units keep the sheet Current.
+- `Dashboard` loads NAVs on load + cache-boot (alongside prices) and the **Refresh
+  prices** action force-refreshes both. `view` composes
+  `enrichMfHoldings(enrichHoldings(…))`.
+
 ## Key rules
 - The sheet supplies qty/avgPrice/invested; live prices supply current/P&L for
   stocks/ETFs (see Live prices above). Never fabricate values.
@@ -113,20 +150,30 @@ The sheet is the source of truth only for **qty / avgPrice / invested**; the
 ## Project layout
 - `src/config.js` — Drive + price-proxy env config, asset-type labels & colors
 - `src/lib/` — `drive` (fetch), `parse` (SheetJS → rows), `classify` (detect +
-  normalize → `{holdings, transactions, meta}`), `quotes` (live prices + enrich),
-  `portfolio` (totals/allocation), `reconcile` (txns vs holdings), `sourceStyle`
-  (per-source row tint hooks), `format` (INR/number/date helpers)
+  normalize → `{holdings, transactions, meta}`), `quotes` (live stock/ETF prices +
+  enrich), `navs` (live MF NAV + enrich), `portfolio` (totals/allocation),
+  `reconcile` (txns vs holdings), `sourceStyle` (per-source row tint hooks),
+  `format` (INR/number/date helpers)
 - `proxy/` — Cloudflare Worker that CORS-proxies Yahoo Finance (live prices)
+- `scripts/build-mf-schemes.mjs` — one-time (re-runnable) generator for
+  `resources/mf-schemes.json` (MF name → AMFI scheme code); run `node
+  scripts/build-mf-schemes.mjs`
 - `src/components/` — `Dashboard` (loads data, owns tabs) + `AppBar`,
   `SummaryCard`, `AllocationDonut`, `HoldingsTable` (generic sortable),
   `AssetTab` (generic Stocks/ETFs/MF), `ConsolidatedTab`, `TransactionsTab`,
-  `ReconcilePanel`, `FileDropzone`, `StateViews`, `SourceLegend` (platform colour key)
-- `resources/` — sample INDmoney exports for local dev/testing
+  `ReconcilePanel`, `StateViews`, `SourceLegend` (platform colour key)
+- `resources/` — sample INDmoney exports for local dev/testing (gitignored as
+  personal financial data), plus the committed `mf-schemes.json`
+  MF-name→scheme-code map. The dir is gitignored, but `mf-schemes.json` is
+  explicitly un-ignored (`!resources/mf-schemes.json`) since `navs.js` imports it
+  at build time and bakes it into the bundle (scheme codes are public AMFI data).
 
 ## Normalized shapes
 - holding: `{ name, isin, symbol|null, type:'stock'|'etf'|'mf', qty, avgPrice,
   invested, current|null, pnl|null, pnlPct|null, marketPrice|null, folio|null,
-  source }` (`symbol` drives live-price lookup; `marketPrice` is the live price)
+  source, asOf|null }` (`symbol` drives stock/ETF live-price lookup; for MFs
+  `mfKey(name)` drives the NAV lookup; `marketPrice` is the live price/NAV; `asOf`
+  is the sheet's snapshot date — the Drive file's `modifiedTime`)
 - transaction: `{ date:Date, name, symbol, isin, side:'BUY'|'SELL', qty, price,
   status }`
 
@@ -134,6 +181,8 @@ The sheet is the source of truth only for **qty / avgPrice / invested**; the
 - `npm run dev` — start dev server
 - `npm run build` — production build
 - `npm run lint` — eslint
+- `node scripts/build-mf-schemes.mjs` — (re)generate `resources/mf-schemes.json`
+  (MF name → AMFI scheme code) from the Drive sheets; run when a new MF appears
 - `npm run deploy` — build + deploy the SPA to Cloudflare (Workers static assets,
   config in root `wrangler.jsonc`, served from `./dist` with SPA fallback)
 - `cd proxy && npx wrangler deploy` — deploy the live-price proxy Worker

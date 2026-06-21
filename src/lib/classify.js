@@ -122,94 +122,23 @@ function parseMfTransactions(sheet) {
   return transactions.length ? { transactions } : null
 }
 
-// --- "My MFs" page (current MF portfolio). Concatenated rows under a
-// "Gain/ Loss" marker, e.g.:
-//   "ICICI ... GrowthInvested₹4.14LCurrent Value₹8.09LGain/ Loss₹3.95L▲95.33%"
-const MYMF_RE = /^(.*?)invested₹(-?[\d.,]+(?:cr|l|k)?)current value₹(-?[\d.,]+(?:cr|l|k)?)gain\/\s*loss₹(-?[\d.,]+(?:cr|l|k)?)(▲|▼)([\d.]+)%/i
-
+// --- "My MFs" page (current MF portfolio). Now a real table with header
+// "Fund Name | Invested | Current Value | Units". Values are compact (e.g.
+// "₹4.14L"), and so are the Units (e.g. "3K" = 3000, "7.61K"), so both go
+// through parseMoney. P&L is derived from current − invested; `units` → qty
+// drives the live-NAV valuation (current = units × NAV) in navs.js.
+//
+// Detected LAST among the MF tables (see buildDataset): its loose header tokens
+// (fund name / invested / current value) are substrings of the Coin and Groww
+// headers, so those must be tried first.
 function parseMyMfs(sheet) {
-  const holdings = []
-  for (const row of sheet.rows) {
-    for (const cell of row || []) {
-      if (cell == null) continue
-      const m = String(cell).match(MYMF_RE)
-      if (!m) continue
-      const [, name, inv, cur, gl] = m
-      const invested = parseMoney(inv)
-      const current = parseMoney(cur)
-      const pnl = parseMoney(gl)
-      holdings.push({
-        name: name.trim(),
-        isin: null,
-        type: 'mf',
-        qty: null,
-        avgPrice: null,
-        invested,
-        current,
-        pnl,
-        pnlPct: pnl != null && invested ? (pnl / invested) * 100 : null,
-        folio: null,
-        source: 'My MFs',
-      })
-    }
-  }
-  return holdings.length ? { holdings } : null
-}
-
-// --- "My MF Coin" page (Zerodha Coin current MF holdings, copy-pasted into a
-// Google Sheet). Unlike INDmoney's single-cell rows, Coin lays each fund out as
-// a fixed block of single-column cells:
-//   <Fund name>
-//   Growth<Equity|Others|…><Sub-category>   e.g. "GrowthEquityMid Cap"
-//   <avg NAV>        (number)
-//   <current NAV>    (number)
-//   <invested>       "4,39,977.88"
-//   <current value>  "5,13,048.48"
-//   <P&L><P&L%>      "73,070.5916.61"  (concatenated — we recompute instead)
-//   <day P&L><day%>  "3,705.980.73"
-// Detected by the category row; P&L is recomputed as current − invested.
-const COIN_CAT_RE = /^(growth|idcw|dividend|payout|reinvest)[a-z ]*?(equity|others|debt|hybrid|liquid)/i
-
-function parseCoinMfs(sheet) {
-  const rows = sheet.rows
-  const cell = (i) => (rows[i] && rows[i][0] != null ? String(rows[i][0]).trim() : '')
-  const holdings = []
-  for (let i = 1; i < rows.length; i++) {
-    if (!COIN_CAT_RE.test(cell(i))) continue // category row marks a fund block
-    const name = cell(i - 1)
-    if (!name) continue
-    const invested = parseMoney(cell(i + 3))
-    const current = parseMoney(cell(i + 4))
-    if (invested == null && current == null) continue
-    const pnl = invested != null && current != null ? current - invested : null
-    holdings.push({
-      name,
-      isin: null,
-      type: 'mf',
-      qty: null,
-      avgPrice: toNum(cell(i + 1)),
-      invested,
-      current,
-      pnl,
-      pnlPct: pnl != null && invested ? (pnl / invested) * 100 : null,
-      folio: null,
-      source: 'My MF Coin',
-    })
-  }
-  return holdings.length ? { holdings } : null
-}
-
-// --- "Axis Bank MF" page (regular-plan MFs bought via Axis Bank, copy-pasted
-// into a Google Sheet). A simple table with header
-// "Fund Name | (blank) | Invested Amount | Current Amount". Values are compact
-// (e.g. "1.5 L", "75K"); there's no Gain/Loss column, so P&L is derived.
-function parseAxisMfs(sheet) {
-  const header = findHeader(sheet.rows, ['fund name', 'invested amount', 'current amount'])
+  const header = findHeader(sheet.rows, ['fund name', 'invested', 'current value', 'units'])
   if (!header) return null
   const c = {
     name: col(header.colMap, 'fund name'),
-    invested: col(header.colMap, 'invested amount', 'invested'),
-    current: col(header.colMap, 'current amount', 'current'),
+    invested: col(header.colMap, 'invested'),
+    current: col(header.colMap, 'current value', 'current'),
+    units: col(header.colMap, 'units'),
   }
   const holdings = []
   for (let i = header.index + 1; i < sheet.rows.length; i++) {
@@ -227,7 +156,93 @@ function parseAxisMfs(sheet) {
       name,
       isin: null,
       type: 'mf',
-      qty: null,
+      qty: parseMoney(row[c.units]),
+      avgPrice: null,
+      invested,
+      current,
+      pnl,
+      pnlPct: pnl != null && invested ? (pnl / invested) * 100 : null,
+      folio: null,
+      source: 'My MFs',
+    })
+  }
+  return holdings.length ? { holdings } : null
+}
+
+// --- "My MF Coin" page (Zerodha Coin current MF holdings, copy-pasted into a
+// Google Sheet). Now a real table with header
+// "Mutual Fund Name | Invested Amount (₹) | Current Value (₹) | Units". Detected
+// by the distinctive "mutual fund name" header; P&L is derived from
+// current − invested. `units` → qty drives the live-NAV valuation in navs.js.
+function parseCoinMfs(sheet) {
+  const header = findHeader(sheet.rows, ['mutual fund name', 'invested amount', 'units'])
+  if (!header) return null
+  const c = {
+    name: col(header.colMap, 'mutual fund name', 'fund name'),
+    invested: col(header.colMap, 'invested amount', 'invested'),
+    current: col(header.colMap, 'current value', 'current'),
+    units: col(header.colMap, 'units'),
+  }
+  const holdings = []
+  for (let i = header.index + 1; i < sheet.rows.length; i++) {
+    const row = sheet.rows[i] || []
+    const name = row[c.name] == null ? '' : String(row[c.name]).trim()
+    if (!name) {
+      if (holdings.length) break // table ended
+      continue
+    }
+    const invested = parseMoney(row[c.invested])
+    const current = parseMoney(row[c.current])
+    if (invested == null && current == null) continue
+    const pnl = invested != null && current != null ? current - invested : null
+    holdings.push({
+      name,
+      isin: null,
+      type: 'mf',
+      qty: parseMoney(row[c.units]),
+      avgPrice: null,
+      invested,
+      current,
+      pnl,
+      pnlPct: pnl != null && invested ? (pnl / invested) * 100 : null,
+      folio: null,
+      source: 'My MF Coin',
+    })
+  }
+  return holdings.length ? { holdings } : null
+}
+
+// --- "Axis Bank MF" page (regular-plan MFs bought via Axis Bank, copy-pasted
+// into a Google Sheet). A simple table with header
+// "Fund Name | units | Invested Amount | Current Amount". Values are compact
+// (e.g. "1.5 L", "75K"); there's no Gain/Loss column, so P&L is derived. `units`
+// → qty drives the live-NAV valuation (current = units × NAV) in navs.js.
+function parseAxisMfs(sheet) {
+  const header = findHeader(sheet.rows, ['fund name', 'invested amount', 'current amount'])
+  if (!header) return null
+  const c = {
+    name: col(header.colMap, 'fund name'),
+    invested: col(header.colMap, 'invested amount', 'invested'),
+    current: col(header.colMap, 'current amount', 'current'),
+    units: col(header.colMap, 'units'),
+  }
+  const holdings = []
+  for (let i = header.index + 1; i < sheet.rows.length; i++) {
+    const row = sheet.rows[i] || []
+    const name = row[c.name] == null ? '' : String(row[c.name]).trim()
+    if (!name) {
+      if (holdings.length) break // table ended
+      continue
+    }
+    const invested = parseMoney(row[c.invested])
+    const current = parseMoney(row[c.current])
+    if (invested == null && current == null) continue
+    const pnl = invested != null && current != null ? current - invested : null
+    holdings.push({
+      name,
+      isin: null,
+      type: 'mf',
+      qty: parseMoney(row[c.units]),
       avgPrice: null,
       invested,
       current,
@@ -313,6 +328,7 @@ function parseGrowwMfs(sheet) {
     name: col(header.colMap, 'fund name'),
     invested: col(header.colMap, 'invested value', 'invested'),
     current: col(header.colMap, 'current value', 'current'),
+    units: col(header.colMap, 'units'),
   }
   const holdings = []
   for (let i = header.index + 1; i < sheet.rows.length; i++) {
@@ -330,7 +346,7 @@ function parseGrowwMfs(sheet) {
       name,
       isin: null,
       type: 'mf',
-      qty: null,
+      qty: parseMoney(row[c.units]),
       avgPrice: null,
       invested,
       current,
@@ -470,41 +486,47 @@ export function buildDataset(parsedFiles) {
   const recognized = []
 
   for (const file of parsedFiles) {
+    // The sheet's snapshot date (Drive last-modified). Stamped onto every holding
+    // as `asOf` so live MF NAV can back out units from the stale Current value.
+    const asOf = file.modifiedTime ? new Date(file.modifiedTime) : null
+    const addHoldings = (hs) => holdings.push(...hs.map((h) => ({ ...h, asOf })))
     for (const sheet of file.sheets) {
       const myStocks = parseMyStocks(sheet)
       if (myStocks) {
-        holdings.push(...myStocks.holdings)
+        addHoldings(myStocks.holdings)
         recognized.push({ file: file.fileName, sheet: sheet.name, type: 'my-stocks' })
-        continue
-      }
-      const myMfs = parseMyMfs(sheet)
-      if (myMfs) {
-        holdings.push(...myMfs.holdings)
-        recognized.push({ file: file.fileName, sheet: sheet.name, type: 'my-mfs' })
         continue
       }
       const coinMfs = parseCoinMfs(sheet)
       if (coinMfs) {
-        holdings.push(...coinMfs.holdings)
+        addHoldings(coinMfs.holdings)
         recognized.push({ file: file.fileName, sheet: sheet.name, type: 'coin-mfs' })
         continue
       }
       const axisMfs = parseAxisMfs(sheet)
       if (axisMfs) {
-        holdings.push(...axisMfs.holdings)
+        addHoldings(axisMfs.holdings)
         recognized.push({ file: file.fileName, sheet: sheet.name, type: 'axis-mfs' })
         continue
       }
       const growwStocks = parseGrowwStocks(sheet)
       if (growwStocks) {
-        holdings.push(...growwStocks.holdings)
+        addHoldings(growwStocks.holdings)
         recognized.push({ file: file.fileName, sheet: sheet.name, type: 'groww-stocks' })
         continue
       }
       const growwMfs = parseGrowwMfs(sheet)
       if (growwMfs) {
-        holdings.push(...growwMfs.holdings)
+        addHoldings(growwMfs.holdings)
         recognized.push({ file: file.fileName, sheet: sheet.name, type: 'groww-mfs' })
+        continue
+      }
+      // My MFs runs LAST among the MF tables: its loose header tokens are
+      // substrings of the Coin/Groww headers, so those must match first.
+      const myMfs = parseMyMfs(sheet)
+      if (myMfs) {
+        addHoldings(myMfs.holdings)
+        recognized.push({ file: file.fileName, sheet: sheet.name, type: 'my-mfs' })
         continue
       }
       const proj = parseProjection(sheet)

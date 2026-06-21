@@ -13,6 +13,7 @@ import { fetchDriveWorkbooks } from '../lib/drive.js'
 import { buildDataset } from '../lib/classify.js'
 import { loadCache, saveCache } from '../lib/cache.js'
 import { fetchQuotes, enrichHoldings } from '../lib/quotes.js'
+import { fetchNavs, enrichMfHoldings, schemeCodesFor } from '../lib/navs.js'
 
 const TABS = [
   { key: 'consolidated', label: 'Consolidated' },
@@ -39,6 +40,9 @@ export default function Dashboard() {
   const [priceMap, setPriceMap] = useState(() => new Map())
   const [pricesAt, setPricesAt] = useState(null)
   const [pricesBusy, setPricesBusy] = useState(false)
+  // Live MF NAVs (Map<schemeCode, { history, latest }>) from mfapi.in; the sheet's
+  // stale MF "Current value" is the fallback for any fund not resolved here.
+  const [navMap, setNavMap] = useState(() => new Map())
 
   const loadFromDrive = useCallback(async () => {
     setStatus('loading')
@@ -99,27 +103,50 @@ export default function Dashboard() {
     [dataset],
   )
 
-  // Refresh prices whenever the dataset changes (load from Drive or boot cache).
+  // Fetch live MF NAVs for the funds in the current dataset (those resolved to an
+  // AMFI scheme code in resources/mf-schemes.json). No proxy needed — mfapi.in is
+  // CORS-enabled. `force` bypasses the daily TTL (manual Refresh).
+  const loadNavs = useCallback(
+    async (force) => {
+      if (!dataset) return
+      const codes = schemeCodesFor(dataset.holdings)
+      if (codes.length === 0) return
+      const map = await fetchNavs(codes, { force })
+      if (map.size > 0) setNavMap(map)
+    },
+    [dataset],
+  )
+
+  // Refresh prices + NAVs whenever the dataset changes (load from Drive or cache).
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      if (!cancelled) await loadPrices(false)
+      if (cancelled) return
+      await loadPrices(false)
+      await loadNavs(false)
     })()
     return () => {
       cancelled = true
     }
-  }, [loadPrices])
+  }, [loadPrices, loadNavs])
 
   // Holdings with live prices applied; everything downstream (cards, allocation,
   // tabs) reads these so the UI reflects live values without further changes.
   const view = useMemo(
-    () => (dataset ? { ...dataset, holdings: enrichHoldings(dataset.holdings, priceMap) } : null),
-    [dataset, priceMap],
+    () =>
+      dataset
+        ? { ...dataset, holdings: enrichMfHoldings(enrichHoldings(dataset.holdings, priceMap), navMap) }
+        : null,
+    [dataset, priceMap, navMap],
   )
 
   // Refresh always re-pulls from Drive (when configured).
   const refresh = driveConfigured() ? loadFromDrive : null
-  const refreshPrices = pricesConfigured() ? () => loadPrices(true) : null
+  // The manual action force-refreshes live stock prices and MF NAVs together.
+  const refreshPrices = () => {
+    if (pricesConfigured()) loadPrices(true)
+    loadNavs(true)
+  }
 
   return (
     <div className="app">
