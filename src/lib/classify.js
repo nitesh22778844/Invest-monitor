@@ -55,6 +55,13 @@ function parseDmy(s) {
   return new Date(Number(m[3]), mon, Number(m[1]))
 }
 
+// Parse a numeric date like "22-06-2026" (DD-MM-YYYY, also tolerates "/").
+function parseNumericDmy(s) {
+  const m = String(s).match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/)
+  if (!m) return null
+  return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]))
+}
+
 function suffixMul(s) {
   const u = (s || '').toLowerCase()
   if (u.startsWith('cr')) return 1e7
@@ -409,40 +416,40 @@ function parseMyStocks(sheet) {
   return holdings.length ? { holdings } : null
 }
 
-// --- "Stocks Transactions" page (stock/ETF orders). Orders grouped under
-// ordinal date headers like "8th Jun'26" / "30th Sept'25"; each transaction row
-// has "N Qty" in col 1 and a "Buy/Sell Executed" status in col 4.
-const ORD_DATE_RE = /^(\d{1,2})(?:st|nd|rd|th)\s+([A-Za-z]+)'(\d{2})$/
-const QTY_RE = /([\d.,]+)\s*qty/i
-
+// --- "Stocks Transactions" page (stock/ETF orders). A real table with header
+// "Date | Stock Name | Quantity | Order Type | Requested Price". `Order Type` is
+// the execution type (Limit/Market), NOT Buy/Sell — the sheet carries no side, so
+// every row is treated as BUY (this page only lists purchases). Symbol is absent
+// and resolved from the INDmoney name→ticker map, like My Stocks.
 function parseStockTransactions(sheet) {
+  const header = findHeader(sheet.rows, ['date', 'stock name', 'quantity'])
+  if (!header) return null
+  const c = {
+    date: col(header.colMap, 'date'),
+    name: col(header.colMap, 'stock name', 'name'),
+    qty: col(header.colMap, 'quantity', 'qty'),
+    orderType: col(header.colMap, 'order type'),
+    price: col(header.colMap, 'requested price', 'price'),
+  }
   const transactions = []
-  let curDate = null
-  for (const row of sheet.rows) {
-    if (!row) continue
-    const s0 = row[0] == null ? '' : String(row[0]).trim()
-    const dm = s0.match(ORD_DATE_RE)
-    if (dm) {
-      const mon = MONTHS[dm[2].slice(0, 3).toLowerCase()]
-      if (mon != null) curDate = new Date(2000 + Number(dm[3]), mon, Number(dm[1]))
+  for (let i = header.index + 1; i < sheet.rows.length; i++) {
+    const row = sheet.rows[i] || []
+    const name = row[c.name] == null ? '' : String(row[c.name]).trim()
+    if (!name) {
+      if (transactions.length) break // table ended
       continue
     }
-    const c1 = row[1]
-    const c4 = row[4]
-    if (!c1 || !/qty/i.test(String(c1))) continue
-    if (!c4 || !/executed/i.test(String(c4))) continue
-    const name = s0.split('\n')[0].trim()
-    const qm = String(c1).match(QTY_RE)
+    const symbol = indStocksSymbol(name)
     transactions.push({
-      date: curDate,
+      date: parseNumericDmy(row[c.date]),
       name,
-      symbol: null,
+      symbol,
       isin: null,
-      type: classifyEquity(name, null),
-      side: /sell/i.test(String(c4)) ? 'SELL' : 'BUY',
-      qty: qm ? toNum(qm[1]) : null,
-      price: parseMoney(row[3]),
-      status: String(c4).trim(),
+      type: classifyEquity(name, symbol),
+      side: 'BUY',
+      qty: toNum(row[c.qty]),
+      price: parseMoney(row[c.price]),
+      status: row[c.orderType] == null ? '' : String(row[c.orderType]).trim(),
     })
   }
   return transactions.length ? { transactions } : null

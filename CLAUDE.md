@@ -44,9 +44,14 @@ fallbacks.)
    (`₹4.14L`, `₹-3.04K`) so they go through `parseMoney`. `parseMyMfs` reads
    `Units` → `qty` (no folio). Detected **last** among the MF tables (its loose
    header tokens are substrings of the Coin/Groww headers — see `buildDataset`).
-3. **Stocks Transactions** — stock/ETF orders. Grouped under ordinal date headers
-   (`8th Jun'26`, `30th Sept'25`); rows have `N Qty` (col 1) and `Buy/Sell Executed`
-   (col 4). `parseStockTransactions` → equity `transactions` (carry `type`).
+3. **Stocks Transactions** — stock/ETF orders. A real table, header
+   `Date | Stock Name | Quantity | Order Type | Requested Price` (dates are
+   `DD-MM-YYYY`; an optional leading `Prompt:` row is skipped by header detection).
+   `Order Type` is the execution type (`Limit`/`Market`), **not** Buy/Sell — the
+   sheet carries no side, so `parseStockTransactions` stamps every row `side:'BUY'`
+   (this page only lists purchases; add a Side column + read it if sells ever
+   appear). Symbol is absent and resolved via the `indmoney` name→ticker map
+   (`indStocksSymbol`, same as My Stocks). → equity `transactions` (carry `type`).
 4. **MF Transactions** — `Buy/Sell` marker + `<Fund>Buy SuccessfulOrder Date<DD Mon
    YYYY>Units<u> (Nav <n>)Amount₹<amt>`. `parseMfTransactions` → `mfTransactions`
    (amount = units×nav). Feeds the **Monthly** tab.
