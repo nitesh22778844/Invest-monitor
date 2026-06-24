@@ -1,7 +1,7 @@
 // Slim top bar: brand on the left, the tab nav (inline on desktop, a ☰ hamburger
 // menu on mobile), and a ⋮ menu on the right holding the data-source badge +
 // Refresh — so the top strip isn't wasted on a big header.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { formatDateTime } from '../lib/format.js'
 
 export default function AppBar({
@@ -19,6 +19,32 @@ export default function AppBar({
   const [menuOpen, setMenuOpen] = useState(false)
   const [navOpen, setNavOpen] = useState(false)
   const hasTabs = tabs && tabs.length > 0
+
+  // Capture Chrome's install prompt so the ⋮ menu can offer "Install app".
+  // Fires only on installable (non-installed) Chromium browsers — e.g. Android
+  // Chrome; the menu item is hidden otherwise.
+  const [installPrompt, setInstallPrompt] = useState(null)
+  useEffect(() => {
+    const onPrompt = (e) => {
+      e.preventDefault()
+      setInstallPrompt(e)
+    }
+    const onInstalled = () => setInstallPrompt(null)
+    window.addEventListener('beforeinstallprompt', onPrompt)
+    window.addEventListener('appinstalled', onInstalled)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onPrompt)
+      window.removeEventListener('appinstalled', onInstalled)
+    }
+  }, [])
+
+  const install = async () => {
+    setMenuOpen(false)
+    if (!installPrompt) return
+    installPrompt.prompt()
+    await installPrompt.userChoice
+    setInstallPrompt(null) // a prompt can only be used once
+  }
 
   return (
     <header className="appbar">
@@ -97,6 +123,11 @@ export default function AppBar({
           <>
             <div className="menu-backdrop" onClick={() => setMenuOpen(false)} />
             <div className="menu" role="menu">
+              {installPrompt && (
+                <button className="menu__item" onClick={install}>
+                  ⬇ Install app
+                </button>
+              )}
               {onRefresh && (
                 <button
                   className="menu__item"

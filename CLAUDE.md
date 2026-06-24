@@ -183,7 +183,8 @@ the sheet.
 
 ## Commands
 - `npm run dev` — start dev server
-- `npm run build` — production build
+- `npm run build` — production build (`vite build` then `node scripts/stamp-sw.mjs`,
+  which stamps a unique cache version into `dist/sw.js` — see PWA below)
 - `npm run lint` — eslint
 - `node scripts/build-mf-schemes.mjs` — (re)generate `resources/mf-schemes.json`
   (MF name → AMFI scheme code) from the Drive sheets; run when a new MF appears
@@ -199,3 +200,18 @@ builds from the local `.env` and uploads `dist`. (If you ever switch to Git-base
 Cloudflare Builds instead, set the `VITE_*` vars in the dashboard build env, since
 `.env` is gitignored.) The Drive API key is embedded in the public bundle by
 design — restrict it by HTTP referrer to the deployed domain in Google Cloud.
+
+## PWA (installable + auto-update)
+The app is an installable PWA (`public/manifest.webmanifest` + `public/sw.js`,
+registered in `main.jsx`, prod only). Two pieces matter:
+- **Install**: the ⋮ menu shows an **Install app** item that fires Chrome's
+  `beforeinstallprompt` (captured in `AppBar.jsx`). It appears only on installable
+  Chromium browsers (e.g. Android Chrome) and hides once installed / on iOS.
+- **Auto-update (no manual reinstall)**: `sw.js` uses a fixed cache name with a
+  `__BUILD_VERSION__` placeholder that `scripts/stamp-sw.mjs` replaces with a
+  per-build timestamp during `npm run build`. So every deploy ships a byte-distinct
+  `sw.js` → the browser detects an update → the new SW `skipWaiting`s, the
+  `activate` handler deletes the old cache, and `main.jsx` reloads the running app
+  on `controllerchange` (guarded so the first install doesn't reload). `main.jsx`
+  also calls `reg.update()` on load and on `visibilitychange`, so reopening the
+  installed PWA pulls the latest build.

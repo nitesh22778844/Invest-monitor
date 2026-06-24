@@ -1,8 +1,10 @@
 // Lightweight service worker for Invest Monitor (PWA).
 // - App shell (HTML/JS/CSS/icons) is cached so the app opens offline.
 // - Google Drive API / data requests are never cached (always live network).
-// Bump CACHE when you want clients to drop the old shell.
-const CACHE = 'invest-monitor-v1';
+// __BUILD_VERSION__ is stamped per build by scripts/stamp-sw.mjs so every deploy
+// ships a distinct sw.js → the browser detects the update, drops the old cache
+// (activate handler), and main.jsx reloads clients onto the new build.
+const CACHE = 'invest-monitor-__BUILD_VERSION__';
 
 self.addEventListener('install', (event) => {
   // Pre-cache the entry point; hashed assets are added on demand below.
