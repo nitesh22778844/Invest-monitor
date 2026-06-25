@@ -3,12 +3,14 @@
 // fold behind a "See more" toggle that makes the list scrollable. On the right a
 // per-month MF cap donut with the selected month's transaction details stacked
 // beneath it. Clicking a month updates the right column — no page scroll needed.
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import AllocationDonut from './AllocationDonut.jsx'
 import { EmptyState } from './StateViews.jsx'
 import { monthlyInvestments, mfCapBreakdown, equityBreakdown, withRecurringSips } from '../lib/monthly.js'
 import { ASSET_COLORS } from '../config.js'
 import { formatINR, formatINRCompact, formatNumber } from '../lib/format.js'
+import SourceLegend from './SourceLegend.jsx'
+import { platformKeyOf } from '../config.js'
 
 const sum = (arr, f) => arr.reduce((a, x) => a + (f(x) || 0), 0)
 const byDateDesc = (a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0)
@@ -22,14 +24,43 @@ const monthKeyOf = (d) =>
   d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` : null
 
 export default function MonthlyTab({ transactions = [], mfTransactions = [] }) {
+  const [activeSource, setActiveSource] = useState(null)
+
   // Fold in the hardcoded recurring SIP(s) not present in the statement.
-  const mfTxns = withRecurringSips(mfTransactions)
-  const months = monthlyInvestments(transactions, mfTxns).map((m) => ({
-    ...m,
-    equity: m.stock + m.etf,
-  }))
-  const displayMonths = [...months].reverse() // latest first
-  const cap = mfCapBreakdown(mfTxns)
+  const allMfTxns = useMemo(() => withRecurringSips(mfTransactions), [mfTransactions])
+
+  // Gather distinct sources from all transactions for the legend filter.
+  const allSources = useMemo(() => {
+    const set = new Set()
+    for (const t of transactions) {
+      if (t.source) set.add(t.source)
+    }
+    for (const t of allMfTxns) {
+      if (t.source) set.add(t.source)
+    }
+    return [...set]
+  }, [transactions, allMfTxns])
+
+  // Filter transaction lists by selected source platform key
+  const mfTxns = useMemo(() => {
+    if (!activeSource) return allMfTxns
+    return allMfTxns.filter((t) => platformKeyOf(t.source) === activeSource)
+  }, [allMfTxns, activeSource])
+
+  const filteredTransactions = useMemo(() => {
+    if (!activeSource) return transactions
+    return transactions.filter((t) => platformKeyOf(t.source) === activeSource)
+  }, [transactions, activeSource])
+
+  const months = useMemo(() => {
+    return monthlyInvestments(filteredTransactions, mfTxns).map((m) => ({
+      ...m,
+      equity: m.stock + m.etf,
+    }))
+  }, [filteredTransactions, mfTxns])
+
+  const displayMonths = useMemo(() => [...months].reverse(), [months]) // latest first
+  const cap = useMemo(() => mfCapBreakdown(mfTxns), [mfTxns])
 
   // Show the 3 most recent months up front; the rest fold behind "See more"
   // (and the list becomes scrollable). Keeps the mobile view short.
@@ -37,18 +68,27 @@ export default function MonthlyTab({ transactions = [], mfTransactions = [] }) {
   const visibleMonths = showAllMonths ? displayMonths : displayMonths.slice(0, 3)
   const hiddenCount = displayMonths.length - visibleMonths.length
 
-  const equity = equityBreakdown(transactions)
+  const equity = useMemo(() => equityBreakdown(filteredTransactions), [filteredTransactions])
 
   // Month picker for the donuts + detail; default to the latest month.
-  const capOptions = [...cap.months].reverse().concat(cap.all)
-  const [selectedMonth, setSelectedMonth] = useState(displayMonths[0]?.month || 'all')
-  const selectedCap = capOptions.find((o) => o.month === selectedMonth)
-  const selectedEq = [...equity.months, equity.all].find((o) => o.month === selectedMonth)
+  const capOptions = useMemo(() => [...cap.months].reverse().concat(cap.all), [cap])
+  const [selectedMonth, setSelectedMonth] = useState(null)
+
+  const activeMonth = useMemo(() => {
+    const defaultMonth = displayMonths[0]?.month || 'all'
+    if (selectedMonth === null) return defaultMonth
+    if (selectedMonth === 'all') return 'all'
+    const exists = capOptions.some((o) => o.month === selectedMonth)
+    return exists ? selectedMonth : defaultMonth
+  }, [selectedMonth, capOptions, displayMonths])
+
+  const selectedCap = capOptions.find((o) => o.month === activeMonth)
+  const selectedEq = [...equity.months, equity.all].find((o) => o.month === activeMonth)
   const selLabel =
-    selectedMonth === 'all' ? 'All months' : months.find((m) => m.month === selectedMonth)?.label || selectedMonth
+    activeMonth === 'all' ? 'All months' : months.find((m) => m.month === activeMonth)?.label || activeMonth
 
   const monthSelect = (
-    <select className="search select" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
+    <select className="search select" value={activeMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
       {capOptions.map((o) => (
         <option key={o.month} value={o.month}>
           {o.label}
@@ -65,15 +105,18 @@ export default function MonthlyTab({ transactions = [], mfTransactions = [] }) {
   const ytdEquity = sum(ytdMonths, (m) => m.equity)
 
   // Transactions in the selected month for the detail list.
-  const inMonth = (d) => selectedMonth === 'all' || monthKeyOf(d) === selectedMonth
-  const detailMf = mfTxns.filter((t) => inMonth(t.date)).sort(byDateDesc)
-  const detailEq = transactions.filter((t) => inMonth(t.date)).sort(byDateDesc)
+  const detailMf = useMemo(() => {
+    return mfTxns.filter((t) => activeMonth === 'all' || monthKeyOf(t.date) === activeMonth).sort(byDateDesc)
+  }, [mfTxns, activeMonth])
+  const detailEq = useMemo(() => {
+    return filteredTransactions.filter((t) => activeMonth === 'all' || monthKeyOf(t.date) === activeMonth).sort(byDateDesc)
+  }, [filteredTransactions, activeMonth])
   const fmtDate = (d) =>
     d
       ? d.toLocaleDateString('en-IN', {
           day: '2-digit',
           month: 'short',
-          ...(selectedMonth === 'all' ? { year: '2-digit' } : {}),
+          ...(activeMonth === 'all' ? { year: '2-digit' } : {}),
         })
       : '—'
 
@@ -96,6 +139,14 @@ export default function MonthlyTab({ transactions = [], mfTransactions = [] }) {
           <span className="strip__label">Months in {year}</span>
           <span className="strip__value">{ytdMonths.length}</span>
         </div>
+      </div>
+
+      <div className="src-legend-row">
+        <SourceLegend
+          sources={allSources}
+          active={activeSource}
+          onSelect={setActiveSource}
+        />
       </div>
 
       <div className="two-col two-col--monthly">
