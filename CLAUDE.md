@@ -52,9 +52,19 @@ fallbacks.)
    (this page only lists purchases; add a Side column + read it if sells ever
    appear). Symbol is absent and resolved via the `indmoney` name→ticker map
    (`indStocksSymbol`, same as My Stocks). → equity `transactions` (carry `type`).
-4. **MF Transactions** — `Buy/Sell` marker + `<Fund>Buy SuccessfulOrder Date<DD Mon
-   YYYY>Units<u> (Nav <n>)Amount₹<amt>`. `parseMfTransactions` → `mfTransactions`
-   (amount = units×nav). Feeds the **Monthly** tab.
+4. **MF Transactions** — MF orders. A real table, header
+   `Order Date | Scheme Name | Amount | Units | NAV` (dates are `DD-MM-YYYY`;
+   amounts are compact `₹20K`; an optional leading `Prompt:` row is skipped by
+   header detection). `parseMfTransactions` reads them via `findHeader`/`col` like
+   the other table parsers. The sheet carries no side, so every row is stamped
+   `side:'BUY'` (this page only lists purchases; add a Side column + read it if
+   sells ever appear). Amount comes from the sheet (`parseMoney`), falling back to
+   units×nav. → `mfTransactions`. Feeds the **Monthly** and **Transactions** tabs.
+
+Date cells: the native-Sheet **export** is XLSX parsed with `cellDates: true`, so a
+date-formatted `Order Date`/`Date` column arrives as a JS `Date`, not a string.
+`parseNumericDmy` (shared by the MF + Stocks transaction parsers) accepts a `Date`
+as-is and otherwise parses the `DD-MM-YYYY` string.
 
 `resources/others/` is intentionally ignored.
 

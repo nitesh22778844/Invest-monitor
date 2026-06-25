@@ -201,7 +201,11 @@ export default function Dashboard() {
             {tab === 'mf' && <AssetTab type="mf" label="Mutual Funds" holdings={view.holdings} />}
             {tab === 'etf' && <AssetTab type="etf" label="ETFs" holdings={view.holdings} />}
             {tab === 'transactions' && (
-              <TransactionsTab holdings={view.holdings} transactions={view.transactions} />
+              <TransactionsTab
+                holdings={view.holdings}
+                transactions={view.transactions}
+                mfTransactions={view.mfTransactions}
+              />
             )}
             {tab === 'analysis' && <AnalysisTab html={view.analysisHtml} />}
             {tab === 'projection' && (

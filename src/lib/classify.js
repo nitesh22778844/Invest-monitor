@@ -18,7 +18,9 @@ const toNum = (v) => {
 function findHeader(rows, required) {
   for (let i = 0; i < rows.length; i++) {
     const cells = (rows[i] || []).map(norm)
-    const hit = required.every((key) => cells.some((c) => c.includes(key)))
+    const hit = required.every((key) =>
+      cells.some((c) => c.includes(key) && !c.includes('\n') && !c.startsWith('prompt') && c.length < 40)
+    )
     if (hit) {
       const colMap = {}
       cells.forEach((c, idx) => {
@@ -40,26 +42,19 @@ function col(colMap, ...candidates) {
   return -1
 }
 
-// --- MF transactions (INDmoney "My Mutual Funds → Transactions" page, pasted
-// into a Google Sheet). Each transaction is one concatenated string in the
-// column under a "Buy/Sell" marker cell, e.g.:
-//   "Invesco India Mid Cap FundBuy SuccessfulOrder Date08 Jun 2026Units91.04 (Nav 219.68)Amount₹20K"
-// We detect by that marker (not filename) and ignore everything else on the page.
-const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }
-
-function parseDmy(s) {
-  const m = String(s).match(/(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})/)
-  if (!m) return null
-  const mon = MONTHS[m[2].slice(0, 3).toLowerCase()]
-  if (mon == null) return null
-  return new Date(Number(m[3]), mon, Number(m[1]))
-}
-
-// Parse a numeric date like "22-06-2026" (DD-MM-YYYY, also tolerates "/").
+// Parse a date cell into a Date. SheetJS (cellDates: true) hands date-formatted
+// cells back as Date objects, so accept those as-is; otherwise parse a numeric
+// string like "22-06-2026" (DD-MM-YYYY, also tolerates "/").
 function parseNumericDmy(s) {
-  const m = String(s).match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/)
-  if (!m) return null
-  return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]))
+  if (s instanceof Date) return Number.isNaN(s.getTime()) ? null : s
+  if (!s) return null
+  const str = String(s).trim()
+  const m = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/)
+  if (m) {
+    return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]))
+  }
+  const d = new Date(str)
+  return Number.isNaN(d.getTime()) ? null : d
 }
 
 function suffixMul(s) {
@@ -91,41 +86,43 @@ function classifyEquity(name, symbol) {
   return ETF_KEYWORDS.some((k) => s.includes(k)) ? 'etf' : 'stock'
 }
 
-const MF_TXN_RE =
-  /^(.*?)(buy|sell)\s+successful.*?order date\s*(\d{1,2}\s+[a-z]{3,}\s+\d{4}).*?units\s*([\d.]+).*?\(nav\s*([\d.]+)\)(?:.*?amount\s*₹\s*([\d.,]+)\s*([a-z]*))?/i
-
+// --- MF transactions (INDmoney "My Mutual Funds → Transactions" page, cleaned
+// into a real table in a Google Sheet). Header
+// "Order Date | Scheme Name | Amount | Units | NAV"; dates are DD-MM-YYYY and
+// amounts are compact (₹20K). An optional leading "Prompt:" row is skipped by
+// header detection. The sheet carries no Buy/Sell column — this page only lists
+// purchases, so every row is stamped side:'BUY' (add a Side column + read it if
+// sells ever appear). Amount comes from the sheet; units × nav is a fallback.
 function parseMfTransactions(sheet) {
-  // Locate the "Buy/Sell" marker cell; transactions sit below it in that column.
-  let marker = null
-  for (let i = 0; i < sheet.rows.length && !marker; i++) {
-    const row = sheet.rows[i] || []
-    for (let j = 0; j < row.length; j++) {
-      if (norm(row[j]) === 'buy/sell') {
-        marker = { row: i, col: j }
-        break
-      }
-    }
+  const header = findHeader(sheet.rows, ['scheme name', 'units', 'nav'])
+  if (!header) return null
+  const c = {
+    date: col(header.colMap, 'order date', 'date'),
+    name: col(header.colMap, 'scheme name', 'name'),
+    amount: col(header.colMap, 'amount'),
+    units: col(header.colMap, 'units'),
+    nav: col(header.colMap, 'nav'),
   }
-  if (!marker) return null
-
   const transactions = []
-  for (let i = marker.row + 1; i < sheet.rows.length; i++) {
-    const cell = (sheet.rows[i] || [])[marker.col]
-    if (cell == null) continue
-    const m = String(cell).match(MF_TXN_RE)
-    if (!m) continue // skips SIP/Switch/STP tabs and promo rows
-    const [, name, side, dateStr, unitsStr, navStr, amtStr, amtSuf] = m
-    const units = toNum(unitsStr)
-    const nav = toNum(navStr)
-    let amount = units != null && nav != null ? units * nav : null
-    if (amount == null && amtStr) amount = toNum(amtStr) * suffixMul(amtSuf)
+  for (let i = header.index + 1; i < sheet.rows.length; i++) {
+    const row = sheet.rows[i] || []
+    const name = row[c.name] == null ? '' : String(row[c.name]).trim()
+    if (!name) {
+      if (transactions.length) break // table ended
+      continue
+    }
+    const units = toNum(row[c.units])
+    const nav = toNum(row[c.nav])
+    let amount = parseMoney(row[c.amount])
+    if (amount == null && units != null && nav != null) amount = units * nav
     transactions.push({
-      date: parseDmy(dateStr),
-      name: name.trim(),
-      side: side.toUpperCase(),
+      date: parseNumericDmy(row[c.date]),
+      name,
+      side: 'BUY',
       units,
       nav,
       amount: amount != null ? Math.round(amount) : null,
+      source: 'My MFs',
     })
   }
   return transactions.length ? { transactions } : null
@@ -421,7 +418,7 @@ function parseMyStocks(sheet) {
 // the execution type (Limit/Market), NOT Buy/Sell — the sheet carries no side, so
 // every row is treated as BUY (this page only lists purchases). Symbol is absent
 // and resolved from the INDmoney name→ticker map, like My Stocks.
-function parseStockTransactions(sheet) {
+function parseStockTransactions(sheet, isGroww = false) {
   const header = findHeader(sheet.rows, ['date', 'stock name', 'quantity'])
   if (!header) return null
   const c = {
@@ -430,6 +427,7 @@ function parseStockTransactions(sheet) {
     qty: col(header.colMap, 'quantity', 'qty'),
     orderType: col(header.colMap, 'order type'),
     price: col(header.colMap, 'requested price', 'price'),
+    status: col(header.colMap, 'status'),
   }
   const transactions = []
   for (let i = header.index + 1; i < sheet.rows.length; i++) {
@@ -439,17 +437,30 @@ function parseStockTransactions(sheet) {
       if (transactions.length) break // table ended
       continue
     }
-    const symbol = indStocksSymbol(name)
+
+    if (isGroww && c.status !== -1) {
+      const rawStatus = row[c.status] == null ? '' : String(row[c.status]).trim()
+      if (rawStatus.toLowerCase().includes('failed') || rawStatus === '') {
+        continue
+      }
+    }
+
+    const symbol = isGroww ? growwSymbol(name) : indStocksSymbol(name)
+    const rawOrderType = row[c.orderType] == null ? '' : String(row[c.orderType]).trim()
+    const side = isGroww
+      ? (rawOrderType.toLowerCase().includes('sell') ? 'SELL' : 'BUY')
+      : 'BUY'
     transactions.push({
       date: parseNumericDmy(row[c.date]),
       name,
       symbol,
       isin: null,
       type: classifyEquity(name, symbol),
-      side: 'BUY',
+      side,
       qty: toNum(row[c.qty]),
       price: parseMoney(row[c.price]),
-      status: row[c.orderType] == null ? '' : String(row[c.orderType]).trim(),
+      status: isGroww && c.status !== -1 ? (row[c.status] == null ? '' : String(row[c.status]).trim()) : rawOrderType,
+      source: isGroww ? 'Stocks Groww' : 'My Stocks',
     })
   }
   return transactions.length ? { transactions } : null
@@ -544,10 +555,16 @@ export function buildDataset(parsedFiles) {
         recognized.push({ file: file.fileName, sheet: sheet.name, type: 'projection' })
         continue
       }
-      const stockTxn = parseStockTransactions(sheet)
+      const isGroww = (file.fileName && file.fileName.toLowerCase().includes('groww')) ||
+                      (sheet.name && sheet.name.toLowerCase().includes('groww'))
+      const stockTxn = parseStockTransactions(sheet, isGroww)
       if (stockTxn) {
         transactions.push(...stockTxn.transactions)
-        recognized.push({ file: file.fileName, sheet: sheet.name, type: 'stock-transactions' })
+        recognized.push({
+          file: file.fileName,
+          sheet: sheet.name,
+          type: isGroww ? 'groww-stock-transactions' : 'stock-transactions'
+        })
         continue
       }
       const mfTxn = parseMfTransactions(sheet)

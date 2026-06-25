@@ -1,6 +1,7 @@
 // Reconciliation: do my transactions match my current holdings?
 import { reconcile } from '../lib/reconcile.js'
 import { formatNumber } from '../lib/format.js'
+import { sourceRowClassName, sourceRowStyle } from '../lib/sourceStyle.js'
 
 const STATUS = {
   match: { label: 'Exact match', cls: 'ok', icon: '✅' },
@@ -40,22 +41,20 @@ export default function ReconcilePanel({ holdings, transactions }) {
           <thead>
             <tr>
               <th>Scrip</th>
-              <th className="ta-r">Buys</th>
-              <th className="ta-r">Sells</th>
               <th className="ta-r">Net txn qty</th>
               <th className="ta-r">Holding qty</th>
               <th className="ta-r">Diff</th>
               <th>Status</th>
+              <th className="ta-r">Buys</th>
+              <th className="ta-r">Sells</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => {
               const st = STATUS[r.status]
               return (
-                <tr key={r.key}>
+                <tr key={r.key} className={sourceRowClassName(r)} style={sourceRowStyle(r)}>
                   <td className="cell-name">{r.name || r.isin}</td>
-                  <td className="ta-r">{r.buyQty ? formatNumber(r.buyQty) : '—'}</td>
-                  <td className="ta-r">{r.sellQty ? formatNumber(r.sellQty) : '—'}</td>
                   <td className="ta-r">{r.txnCount ? formatNumber(r.netTxn) : '—'}</td>
                   <td className="ta-r">{r.holdingQty != null ? formatNumber(r.holdingQty) : '—'}</td>
                   <td className={`ta-r ${r.status === 'shortfall' ? 'neg' : ''}`}>
@@ -66,6 +65,8 @@ export default function ReconcilePanel({ holdings, transactions }) {
                       {st.icon} {st.label}
                     </span>
                   </td>
+                  <td className="ta-r">{r.buyQty ? formatNumber(r.buyQty) : '—'}</td>
+                  <td className="ta-r">{r.sellQty ? formatNumber(r.sellQty) : '—'}</td>
                 </tr>
               )
             })}

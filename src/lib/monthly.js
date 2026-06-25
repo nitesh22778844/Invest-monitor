@@ -30,7 +30,7 @@ export function withRecurringSips(mfTxns = [], now = new Date()) {
           t.date.getDate() === sip.day,
       )
       if (date <= now && !already) {
-        extra.push({ date, name: sip.fund, side: 'BUY', units: null, nav: null, amount: sip.amount, sip: true })
+        extra.push({ date, name: sip.fund, side: 'BUY', units: null, nav: null, amount: sip.amount, sip: true, source: 'My MFs' })
       }
       m += 1
       if (m > 11) {

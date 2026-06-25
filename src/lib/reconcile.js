@@ -56,7 +56,7 @@ export function reconcile(holdings, transactions) {
 
   for (const h of equityHoldings) {
     const k = keyOf(h.isin, h.name)
-    ensure(k, { isin: h.isin, name: h.name, type: h.type, holdingQty: h.qty ?? 0 })
+    ensure(k, { isin: h.isin, name: h.name, type: h.type, holdingQty: h.qty ?? 0, source: h.source })
   }
 
   for (const t of transactions) {
@@ -64,6 +64,7 @@ export function reconcile(holdings, transactions) {
     const row = ensure(k, {})
     if (!row.name) row.name = t.name
     if (!row.isin && t.isin) row.isin = t.isin
+    if (!row.source && t.source) row.source = t.source
     if (t.side === 'BUY') row.buyQty += t.qty || 0
     else if (t.side === 'SELL') row.sellQty += t.qty || 0
     row.txnCount += 1
